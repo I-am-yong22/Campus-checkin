@@ -8,29 +8,6 @@
 
 *暑期学校团体刷脸签到/签退 · 请假审批 · 团队管理 · 本地可信写入*
 
-<br/>
-
-[![License](https://img.shields.io/badge/License-PolyForm_Noncommercial-0969da?style=flat-square&labelColor=ddf4ff)](LICENSE)
-[![Node.js](https://img.shields.io/badge/Node.js-18+-339933?style=flat-square&logo=node.js&logoColor=white)](https://nodejs.org/)
-[![Docker](https://img.shields.io/badge/Docker-Compose-2496ED?style=flat-square&logo=docker&logoColor=white)](docker-compose.yml)
-[![TypeScript](https://img.shields.io/badge/TypeScript-5-3178C6?style=flat-square&logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
-[![MySQL](https://img.shields.io/badge/MySQL-8-4479A1?style=flat-square&logo=mysql&logoColor=white)](https://www.mysql.com/)
-[![Issues](https://img.shields.io/badge/Issues-Welcome-0969da?style=flat-square&labelColor=ddf4ff)](https://github.com/I-am-yong22/Campus-checkin/issues)
-
-<br/>
-
-[![nestjs](https://img.shields.io/badge/nestjs-0969da?style=flat-square&labelColor=ddf4ff&color=0969da)](https://nestjs.com/)
-[![react](https://img.shields.io/badge/react-0969da?style=flat-square&labelColor=ddf4ff&color=0969da)](https://react.dev/)
-[![typescript](https://img.shields.io/badge/typescript-0969da?style=flat-square&labelColor=ddf4ff&color=0969da)](https://www.typescriptlang.org/)
-[![prisma](https://img.shields.io/badge/prisma-0969da?style=flat-square&labelColor=ddf4ff&color=0969da)](https://www.prisma.io/)
-[![mysql](https://img.shields.io/badge/mysql-0969da?style=flat-square&labelColor=ddf4ff&color=0969da)](https://www.mysql.com/)
-[![face-recognition](https://img.shields.io/badge/face--recognition-0969da?style=flat-square&labelColor=ddf4ff&color=0969da)](#人脸识别)
-[![check-in](https://img.shields.io/badge/check--in-0969da?style=flat-square&labelColor=ddf4ff&color=0969da)](#项目是做什么的)
-[![attendance](https://img.shields.io/badge/attendance-0969da?style=flat-square&labelColor=ddf4ff&color=0969da)](#功能概览)
-[![docker](https://img.shields.io/badge/docker-0969da?style=flat-square&labelColor=ddf4ff&color=0969da)](#docker-一键部署)
-[![vite](https://img.shields.io/badge/vite-0969da?style=flat-square&labelColor=ddf4ff&color=0969da)](https://vitejs.dev/)
-[![ant-design](https://img.shields.io/badge/ant--design-0969da?style=flat-square&labelColor=ddf4ff&color=0969da)](https://ant.design/)
-
 </div>
 
 ---
