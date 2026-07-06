@@ -1,0 +1,291 @@
+// 注意：本 schema 必须与主后端 backend/prisma/schema.prisma 保持一致。
+// 单机签到服务与主后端共用同一个 MySQL 数据库。
+// 数据库表结构（迁移）由主后端负责创建与维护，kiosk 端仅生成 Prisma Client 用于读写，不执行 migrate。
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  USER
+  LEADER
+  ADMIN
+}
+
+enum UserStatus {
+  ACTIVE
+  DISABLED
+}
+
+enum CheckInStatus {
+  NORMAL
+  LATE
+  MAKEUP
+}
+
+enum CheckOutType {
+  MANUAL
+  AUTO
+  MAKEUP
+}
+
+enum AttendanceTaskStatus {
+  DRAFT
+  PUBLISHED
+  CANCELLED
+}
+
+enum LeaveStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum LeaveReviewTarget {
+  LEADER
+  ADMIN
+}
+
+model Team {
+  id          Int       @id @default(autoincrement())
+  name        String    @unique
+  description String?   @db.Text
+  startDate   DateTime?
+  endDate     DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  members     User[]    @relation("TeamMembers")
+  checkInRule CheckInRule?
+  checkIns    CheckIn[]
+  exemptions  CalendarExemption[]
+  kioskMissionBoards KioskMissionBoard[]
+}
+
+model User {
+  id                 Int        @id @default(autoincrement())
+  username           String     @unique
+  passwordHash       String
+  name               String
+  role               Role       @default(USER)
+  status             UserStatus @default(ACTIVE)
+  phone              String?
+  mustChangePassword Boolean    @default(true)
+  faceRegistered     Boolean    @default(false)
+  avatarUrl          String?
+  seat               String?    @unique
+  createdAt          DateTime   @default(now())
+  updatedAt          DateTime   @updatedAt
+
+  teamId      Int?
+  team        Team?     @relation("TeamMembers", fields: [teamId], references: [id])
+
+  faceProfile FaceProfile?
+  checkIns    CheckIn[]
+  leaves      LeaveRequest[] @relation("LeaveOwner")
+  reviewed    LeaveRequest[] @relation("LeaveReviewer")
+  auditLogs   AuditLog[]
+  kioskBirthdayShows KioskBirthdayShow[]
+
+  @@index([teamId])
+  @@index([role])
+}
+
+model FaceProfile {
+  id           Int      @id @default(autoincrement())
+  userId       Int      @unique
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  descriptor   String   @db.Text // JSON 数组，128 维特征
+  registeredAt DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
+
+model CheckInRule {
+  id          Int      @id @default(autoincrement())
+  teamId      Int      @unique
+  team        Team     @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  startTime   String   @default("08:00") // 当日签到开始
+  lateTime    String   @default("09:00") // 超过该时间记迟到
+  endTime       String   @default("10:00") // 签到截止
+  checkOutStart String   @default("17:00") // 签退开始
+  checkOutEnd   String   @default("18:00") // 签退截止
+  enabled       Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+}
+
+model PlatformCheckInRule {
+  id            Int      @id @default(1)
+  startTime     String   @default("08:00")
+  lateTime      String   @default("09:00")
+  endTime       String   @default("10:00")
+  checkOutStart String   @default("17:00")
+  checkOutEnd   String   @default("18:00")
+  enabled       Boolean  @default(true)
+  updatedAt     DateTime @updatedAt
+}
+
+model AttendanceTask {
+  id            Int                  @id @default(autoincrement())
+  date          String               @unique
+  checkInStart  String
+  lateTime      String
+  checkInEnd    String
+  checkOutStart String
+  checkOutEnd   String
+  status        AttendanceTaskStatus @default(DRAFT)
+  note          String?              @db.Text
+  publishedById Int?
+  publishedAt   DateTime?
+  createdAt     DateTime             @default(now())
+  updatedAt     DateTime             @updatedAt
+
+  @@index([status])
+  @@index([date])
+}
+
+model CheckIn {
+  id            Int           @id @default(autoincrement())
+  userId        Int
+  user          User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  teamId        Int?
+  team          Team?         @relation(fields: [teamId], references: [id])
+  date          String
+  checkInAt     DateTime      @default(now())
+  matchScore    Float         @default(0)
+  livenessPassed Boolean      @default(false)
+  status        CheckInStatus @default(NORMAL)
+  remark        String?
+  checkOutAt    DateTime?
+  checkOutScore Float?
+  checkOutType  CheckOutType?
+  workMinutes   Int?
+
+  @@unique([userId, date])
+  @@index([teamId, date])
+  @@index([date])
+}
+
+model LeaveRequest {
+  id            Int         @id @default(autoincrement())
+  userId        Int
+  user          User        @relation("LeaveOwner", fields: [userId], references: [id], onDelete: Cascade)
+  startDate     String      // YYYY-MM-DD
+  endDate       String      // YYYY-MM-DD
+  type          String      @default("事假")
+  reason        String      @db.Text
+  reviewTarget  LeaveReviewTarget @default(LEADER)
+  status        LeaveStatus @default(PENDING)
+  reviewerId    Int?
+  reviewer      User?       @relation("LeaveReviewer", fields: [reviewerId], references: [id])
+  reviewComment String?
+  reviewedAt    DateTime?
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+
+  @@index([userId])
+  @@index([status])
+  @@index([reviewTarget, status])
+}
+
+model AuditLog {
+  id        Int      @id @default(autoincrement())
+  userId    Int?
+  user      User?    @relation(fields: [userId], references: [id])
+  action    String
+  detail    String?  @db.Text
+  ip        String?
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@index([action])
+}
+
+model CalendarExemption {
+  id        Int      @id @default(autoincrement())
+  teamId    Int?
+  team      Team?    @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  date      String
+  reason    String?
+  createdAt DateTime @default(now())
+
+  @@unique([teamId, date])
+  @@index([date])
+}
+
+model KioskHeartbeat {
+  id            Int      @id @default(1)
+  lastSeenAt    DateTime @default(now())
+  lastCheckInAt DateTime?
+  version       String?
+}
+
+model KioskCarouselSlide {
+  id        Int      @id @default(autoincrement())
+  sortOrder Int      @default(0)
+  title     String   @default("轮播图")
+  imageUrl  String?
+  enabled   Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model KioskCountdown {
+  id        Int      @id @default(autoincrement())
+  title     String
+  targetAt  DateTime
+  enabled   Boolean  @default(true)
+  sortOrder Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model KioskMissionBoard {
+  id         Int      @id @default(autoincrement())
+  teamId     Int?
+  team       Team?    @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  title      String
+  deadlineAt DateTime?
+  headline   String?  @db.Text
+  enabled    Boolean  @default(true)
+  sortOrder  Int      @default(0)
+  gaps       KioskMissionGap[]
+  progress   KioskMissionProgress[]
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+}
+
+model KioskMissionGap {
+  id          Int               @id @default(autoincrement())
+  boardId     Int
+  board       KioskMissionBoard @relation(fields: [boardId], references: [id], onDelete: Cascade)
+  deliverable String
+  assignees   String
+  sortOrder   Int               @default(0)
+}
+
+model KioskMissionProgress {
+  id        Int               @id @default(autoincrement())
+  boardId   Int
+  board     KioskMissionBoard @relation(fields: [boardId], references: [id], onDelete: Cascade)
+  label     String
+  percent   Int               @default(0)
+  sortOrder Int               @default(0)
+}
+
+model KioskBirthdayShow {
+  id        Int      @id @default(autoincrement())
+  userId    Int
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  date      String
+  startTime String
+  message   String?  @db.Text
+  enabled   Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
