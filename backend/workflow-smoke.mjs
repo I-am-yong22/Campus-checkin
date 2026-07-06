@@ -48,8 +48,7 @@ async function main() {
   console.log('=== 团队申请/邀请冒烟测试 ===\n');
 
   const adminToken = await tokenFor('admin');
-  const leader2Token = await tokenFor('leader2');
-  const user2Token = await tokenFor('user2');
+  const leaderToken = await tokenFor('leader');
   const userToken = await tokenFor('user');
   ok('签发 JWT');
 
@@ -60,17 +59,17 @@ async function main() {
   let applicationId2;
   let teamId2;
 
-  // 清理 leader2 状态
-  const leader2 = await prisma.user.findUnique({ where: { username: 'leader2' } });
-  if (!leader2) throw new Error('leader2 不存在');
-  if (leader2.teamId) {
-    await prisma.user.update({ where: { id: leader2.id }, data: { teamId: null } });
+  // 清理 leader 状态
+  const leader = await prisma.user.findUnique({ where: { username: 'leader' } });
+  if (!leader) throw new Error('leader 不存在');
+  if (leader.teamId) {
+    await prisma.user.update({ where: { id: leader.id }, data: { teamId: null } });
   }
-  await prisma.teamCreationRequest.deleteMany({ where: { applicantId: leader2.id } });
+  await prisma.teamCreationRequest.deleteMany({ where: { applicantId: leader.id } });
 
   // 1. 负责人提交创建申请
   {
-    const { status, data } = await api(leader2Token, '/team-applications', {
+    const { status, data } = await api(leaderToken, '/team-applications', {
       method: 'POST',
       body: JSON.stringify({
         name: teamName,
@@ -86,7 +85,7 @@ async function main() {
 
   // 2. 学员不能申请
   {
-    const { status } = await api(user2Token, '/team-applications', {
+    const { status } = await api(userToken, '/team-applications', {
       method: 'POST',
       body: JSON.stringify({ name: 'x', reason: 'test reason here' }),
     });
@@ -114,21 +113,21 @@ async function main() {
     } else fail('PATCH review APPROVED', `status=${status}`);
   }
 
-  // 刷新 leader2 token（teamId 已变）
-  const leader2Updated = await prisma.user.findUnique({ where: { username: 'leader2' } });
-  if (!leader2Updated) throw new Error('leader2 不存在');
-  const leader2Token2 = jwt.sign(
+  // 刷新 leader token（teamId 已变）
+  const leaderUpdated = await prisma.user.findUnique({ where: { username: 'leader' } });
+  if (!leaderUpdated) throw new Error('leader 不存在');
+  const leaderToken2 = jwt.sign(
     {
-      sub: leader2Updated.id,
-      username: leader2Updated.username,
-      role: leader2Updated.role,
-      teamId: leader2Updated.teamId,
+      sub: leaderUpdated.id,
+      username: leaderUpdated.username,
+      role: leaderUpdated.role,
+      teamId: leaderUpdated.teamId,
     },
     JWT_SECRET,
     { expiresIn: '1h' },
   );
 
-  if (!leader2Updated?.teamId) {
+  if (!leaderUpdated?.teamId) {
     fail('负责人加入团队', '批准后 teamId 未设置');
   } else {
     ok('负责人已绑定团队');
@@ -136,20 +135,20 @@ async function main() {
 
   // 5. 邀请候选
   {
-    const { status, data } = await api(leader2Token2, '/team-invitations/candidates');
-    if (status === 200 && data.some((u) => u.username === 'user2')) {
+    const { status, data } = await api(leaderToken2, '/team-invitations/candidates');
+    if (status === 200 && data.some((u) => u.username === 'user')) {
       ok(`GET /team-invitations/candidates (${data.length})`);
     } else fail('GET candidates', `status=${status}`);
   }
 
-  const user2 = await prisma.user.findUnique({ where: { username: 'user2' } });
-  if (!user2) throw new Error('user2 不存在');
+  const user = await prisma.user.findUnique({ where: { username: 'user' } });
+  if (!user) throw new Error('user 不存在');
 
   // 6. 发送邀请
   {
-    const { status, data } = await api(leader2Token2, '/team-invitations', {
+    const { status, data } = await api(leaderToken2, '/team-invitations', {
       method: 'POST',
-      body: JSON.stringify({ inviteeId: user2.id, message: '欢迎加入' }),
+      body: JSON.stringify({ inviteeId: user.id, message: '欢迎加入' }),
     });
     if (status === 201 || status === 200) {
       invitationId = data.id;
@@ -157,17 +156,17 @@ async function main() {
     } else fail('POST /team-invitations', `status=${status}`);
   }
 
-  // 7. user2 查看邀请
+  // 7. user 查看邀请
   {
-    const { status, data } = await api(user2Token, '/team-invitations/mine');
+    const { status, data } = await api(userToken, '/team-invitations/mine');
     if (status === 200 && data.some((i) => i.id === invitationId)) {
       ok('GET /team-invitations/mine');
     } else fail('GET /team-invitations/mine', `status=${status}`);
   }
 
-  // 8. user2 接受邀请
+  // 8. user 接受邀请
   {
-    const { status, data } = await api(user2Token, `/team-invitations/${invitationId}/accept`, {
+    const { status, data } = await api(userToken, `/team-invitations/${invitationId}/accept`, {
       method: 'PATCH',
     });
     if (status === 200 && data.success) {
@@ -175,26 +174,26 @@ async function main() {
     } else fail('PATCH accept', `status=${status}`);
   }
 
-  const user2After = await prisma.user.findUnique({ where: { username: 'user2' } });
-  if (user2After?.teamId === teamId) {
-    ok('user2 已加入团队');
+  const userAfter = await prisma.user.findUnique({ where: { username: 'user' } });
+  if (userAfter?.teamId === teamId) {
+    ok('user 已加入团队');
   } else {
-    fail('user2 加入团队', `teamId=${user2After?.teamId}`);
+    fail('user 加入团队', `teamId=${userAfter?.teamId}`);
   }
 
   // 9. peers 可见（需刷新 token，JWT 内 teamId 已变）
   {
-    const user2TokenFresh = jwt.sign(
+    const userTokenFresh = jwt.sign(
       {
-        sub: user2After.id,
-        username: user2After.username,
-        role: user2After.role,
-        teamId: user2After.teamId,
+        sub: userAfter.id,
+        username: userAfter.username,
+        role: userAfter.role,
+        teamId: userAfter.teamId,
       },
       JWT_SECRET,
       { expiresIn: '1h' },
     );
-    const { status, data } = await api(user2TokenFresh, '/teams/peers');
+    const { status, data } = await api(userTokenFresh, '/teams/peers');
     if (status === 200 && data.members?.length >= 2) {
       ok(`GET /teams/peers (${data.members.length} 人)`);
     } else fail('GET /teams/peers', `status=${status} members=${data.members?.length}`);
@@ -202,20 +201,20 @@ async function main() {
 
   // 10. 负责人移出成员
   {
-    const { status, data } = await api(leader2Token2, `/teams/members/${user2After.id}/remove`, {
+    const { status, data } = await api(leaderToken2, `/teams/members/${userAfter.id}/remove`, {
       method: 'POST',
     });
     if ((status === 200 || status === 201) && data.success) ok('POST /teams/members/:id/remove');
     else fail('POST remove member', `status=${status}`);
   }
 
-  const user2Removed = await prisma.user.findUnique({ where: { username: 'user2' } });
-  if (!user2Removed?.teamId) ok('user2 已被移出团队');
-  else fail('user2 移出校验', `teamId=${user2Removed?.teamId}`);
+  const userRemoved = await prisma.user.findUnique({ where: { username: 'user' } });
+  if (!userRemoved?.teamId) ok('user 已被移出团队');
+  else fail('user 移出校验', `teamId=${userRemoved?.teamId}`);
 
   // 11. 不能移出自己
   {
-    const { status } = await api(leader2Token2, `/teams/members/${leader2Updated.id}/remove`, {
+    const { status } = await api(leaderToken2, `/teams/members/${leaderUpdated.id}/remove`, {
       method: 'POST',
     });
     if (status === 400) ok('移出自己 400');
@@ -224,8 +223,8 @@ async function main() {
 
   // 12. 学员不能移人
   {
-    const user2TokenFresh = await tokenFor('user2');
-    const { status } = await api(user2TokenFresh, `/teams/members/${user2.id}/remove`, {
+    const userTokenFresh = await tokenFor('user');
+    const { status } = await api(userTokenFresh, `/teams/members/${user.id}/remove`, {
       method: 'POST',
     });
     if (status === 403) ok('学员 remove 403');
@@ -235,7 +234,7 @@ async function main() {
   // 13. 负责人可创建第二个团队
   const teamName2 = `${teamName}_二团`;
   {
-    const { status, data } = await api(leader2Token2, '/team-applications', {
+    const { status, data } = await api(leaderToken2, '/team-applications', {
       method: 'POST',
       body: JSON.stringify({
         name: teamName2,
@@ -261,14 +260,14 @@ async function main() {
   }
 
   {
-    const { status, data } = await api(leader2Token2, '/teams/managed');
+    const { status, data } = await api(leaderToken2, '/teams/managed');
     if (status === 200 && data.length >= 2 && data.some((t) => t.id === teamId) && data.some((t) => t.id === teamId2)) {
       ok(`GET /teams/managed (${data.length} 个)`);
     } else fail('GET /teams/managed', `status=${status} count=${data?.length}`);
   }
 
   {
-    const { status, data } = await api(leader2Token2, `/teams/members?teamId=${teamId2}`);
+    const { status, data } = await api(leaderToken2, `/teams/members?teamId=${teamId2}`);
     if (status === 200 && data.team?.id === teamId2) ok('GET /teams/members?teamId= 切换团队');
     else fail('GET /teams/members 切换', `status=${status}`);
   }
@@ -281,11 +280,11 @@ async function main() {
   if (applicationId2) {
     await prisma.teamCreationRequest.delete({ where: { id: applicationId2 } }).catch(() => {});
   }
-  // 清理：移除 user2 团队（便于下次测试）
-  await prisma.user.update({ where: { username: 'user2' }, data: { teamId: null } });
+  // 清理：移除 user 团队（便于下次测试）
+  await prisma.user.update({ where: { username: 'user' }, data: { teamId: null } });
     await prisma.teamInvitation.deleteMany({ where: { teamId } });
     await prisma.teamInviteCode.deleteMany({ where: { teamId } });
-  await prisma.user.update({ where: { username: 'leader2' }, data: { teamId: null } });
+  await prisma.user.update({ where: { username: 'leader' }, data: { teamId: null } });
   if (teamId) {
     await prisma.checkInRule.deleteMany({ where: { teamId } }).catch(() => {});
     await prisma.team.delete({ where: { id: teamId } }).catch(() => {});

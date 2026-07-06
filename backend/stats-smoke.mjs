@@ -73,18 +73,18 @@ async function main() {
     process.exit(1);
   }
 
-  // 3. 负责人查看本团队成员
+  // 3. 负责人查看本团队成员（种子默认无团队）
   {
     const { status, data } = await api(leaderToken, '/teams/members');
-    if (status === 200 && data.team?.id === team.id && Array.isArray(data.members)) {
-      ok(`GET /teams/members 负责人 (${data.members.length} 人)`);
+    if (status === 200 && data.team === null && Array.isArray(data.members)) {
+      ok('GET /teams/members 负责人（种子无团队）');
     } else fail('GET /teams/members 负责人', `status=${status}`);
   }
 
   // 4. 管理员需传 teamId
   {
     const { status, data } = await api(adminToken, `/teams/members?teamId=${team.id}`);
-    if (status === 200 && data.summary && data.members.length >= 1) {
+    if (status === 200 && data.summary && Array.isArray(data.members)) {
       ok('GET /teams/members 管理员指定团队');
     } else fail('GET /teams/members 管理员', `status=${status}`);
   }

@@ -71,11 +71,13 @@ async function main() {
   }
 
   const user = await prisma.user.findUnique({ where: { username: 'user' }, select: { id: true, teamId: true } });
-  if (!user?.teamId) {
-    fail('测试用户需有团队');
+  if (!user) {
+    fail('测试用户 user 不存在');
     await prisma.$disconnect();
     process.exit(1);
   }
+
+  const exportTeam = await prisma.team.findFirst({ select: { id: true } });
 
   const date = new Date(Date.now() + 8 * 3600 * 1000).toISOString().slice(0, 10);
 
@@ -159,10 +161,14 @@ async function main() {
     fail('自动补签退数据模型');
   }
 
-  const exportRes = await fetch(`${API}/export/work-hours?teamId=${user.teamId}&month=${date.slice(0, 7)}`, {
+  const exportRes = await fetch(
+    `${API}/export/work-hours?teamId=${exportTeam?.id ?? ''}&month=${date.slice(0, 7)}`,
+    {
     headers: { Authorization: `Bearer ${adminToken}` },
   });
-  if (exportRes.status === 200 && exportRes.headers.get('content-type')?.includes('csv')) {
+  if (!exportTeam?.id) {
+    fail('GET export/work-hours', '无演示团队');
+  } else if (exportRes.status === 200 && exportRes.headers.get('content-type')?.includes('csv')) {
     ok('GET export/work-hours (管理员)');
   } else {
     fail('GET export/work-hours', `status=${exportRes.status}`);
@@ -183,10 +189,14 @@ async function main() {
   }
 
   const leaderToken = await tokenFor('leader');
-  const forbiddenExport = await fetch(`${API}/export/work-hours?teamId=${user.teamId}&month=${date.slice(0, 7)}`, {
+  const forbiddenExport = await fetch(
+    `${API}/export/work-hours?teamId=${exportTeam?.id ?? ''}&month=${date.slice(0, 7)}`,
+    {
     headers: { Authorization: `Bearer ${leaderToken}` },
   });
-  if (forbiddenExport.status === 403) ok('负责人无法导出全员工时');
+  if (!exportTeam?.id) {
+    fail('负责人无法导出全员工时', '无演示团队');
+  } else if (forbiddenExport.status === 403) ok('负责人无法导出全员工时');
   else fail('负责人无法导出全员工时', `status=${forbiddenExport.status}`);
 
   // 清理测试任务（取消）

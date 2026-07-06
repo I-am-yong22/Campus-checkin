@@ -116,14 +116,14 @@ async function main() {
   let code1;
   let code2;
 
-  const leader2 = await prisma.user.findUnique({ where: { username: 'leader2' } });
-  const user2 = await prisma.user.findUnique({ where: { username: 'user2' } });
-  if (!leader2 || !user2) throw new Error('leader2 / user2 不存在');
+  const leader = await prisma.user.findUnique({ where: { username: 'leader' } });
+  const user = await prisma.user.findUnique({ where: { username: 'user' } });
+  if (!leader || !user) throw new Error('leader / user 不存在');
 
-  await prisma.user.update({ where: { id: user2.id }, data: { teamId: null } });
+  await prisma.user.update({ where: { id: user.id }, data: { teamId: null } });
 
   try {
-    ({ teamId, leaderToken, applicationId } = await setupLeaderTeam(adminToken, 'leader2'));
+    ({ teamId, leaderToken, applicationId } = await setupLeaderTeam(adminToken, 'leader'));
     ok(`建团完成 (teamId=${teamId})`);
 
     // 生成邀请码
@@ -151,11 +151,11 @@ async function main() {
       else fail('GET /team-invite-codes/mine', `status=${status}`);
     }
 
-    const user2Token = await tokenFor('user2');
+    const userToken = await tokenFor('user');
 
     // 预览
     {
-      const { status, data } = await api(user2Token, `/team-invite-codes/preview?code=${code1}`);
+      const { status, data } = await api(userToken, `/team-invite-codes/preview?code=${code1}`);
       if (status === 200 && data.team?.id === teamId) ok('GET /team-invite-codes/preview');
       else fail('GET /team-invite-codes/preview', `status=${status}`);
     }
@@ -171,14 +171,14 @@ async function main() {
 
     // 旧码失效
     {
-      const { status } = await api(user2Token, `/team-invite-codes/preview?code=${code1}`);
+      const { status } = await api(userToken, `/team-invite-codes/preview?code=${code1}`);
       if (status === 400) ok('旧邀请码 preview 400');
       else fail('旧邀请码 preview', `status=${status}`);
     }
 
     // 加入
     {
-      const { status, data } = await api(user2Token, '/team-invite-codes/join', {
+      const { status, data } = await api(userToken, '/team-invite-codes/join', {
         method: 'POST',
         body: JSON.stringify({ code: code2 }),
       });
@@ -188,13 +188,13 @@ async function main() {
       } else fail('POST join', `status=${status}`);
     }
 
-    const user2After = await prisma.user.findUnique({ where: { username: 'user2' } });
-    if (user2After?.teamId === teamId) ok('user2 已通过邀请码加入团队');
-    else fail('user2 加入团队校验', `teamId=${user2After?.teamId}`);
+    const userAfter = await prisma.user.findUnique({ where: { username: 'user' } });
+    if (userAfter?.teamId === teamId) ok('user 已通过邀请码加入团队');
+    else fail('user 加入团队校验', `teamId=${userAfter?.teamId}`);
 
     // 重复加入同一团队
     {
-      const { status } = await api(user2Token, '/team-invite-codes/join', {
+      const { status } = await api(userToken, '/team-invite-codes/join', {
         method: 'POST',
         body: JSON.stringify({ code: code2 }),
       });
@@ -204,19 +204,19 @@ async function main() {
 
     // 退出团队
     {
-      const { status, data } = await api(user2Token, '/teams/leave', { method: 'POST' });
+      const { status, data } = await api(userToken, '/teams/leave', { method: 'POST' });
       if ((status === 200 || status === 201) && data.success) ok('POST /teams/leave');
       else fail('POST /teams/leave', `status=${status}`);
     }
 
-    const user2Left = await prisma.user.findUnique({ where: { username: 'user2' } });
-    if (!user2Left?.teamId) ok('user2 已退出团队');
-    else fail('user2 退出校验', `teamId=${user2Left?.teamId}`);
+    const userLeft = await prisma.user.findUnique({ where: { username: 'user' } });
+    if (!userLeft?.teamId) ok('user 已退出团队');
+    else fail('user 退出校验', `teamId=${userLeft?.teamId}`);
 
     // 退出后可再次加入
-    const user2TokenAfterLeave = await tokenFor('user2');
+    const userTokenAfterLeave = await tokenFor('user');
     {
-      const { status, data } = await api(user2TokenAfterLeave, '/team-invite-codes/join', {
+      const { status, data } = await api(userTokenAfterLeave, '/team-invite-codes/join', {
         method: 'POST',
         body: JSON.stringify({ code: code2 }),
       });
@@ -238,11 +238,11 @@ async function main() {
       else fail('POST disable', `status=${status}`);
     }
 
-    // 重置 user2 测禁用码
-    await prisma.user.update({ where: { id: user2.id }, data: { teamId: null } });
-    const user2TokenFresh = await tokenFor('user2');
+    // 重置 user 测禁用码
+    await prisma.user.update({ where: { id: user.id }, data: { teamId: null } });
+    const userTokenFresh = await tokenFor('user');
     {
-      const { status } = await api(user2TokenFresh, '/team-invite-codes/join', {
+      const { status } = await api(userTokenFresh, '/team-invite-codes/join', {
         method: 'POST',
         body: JSON.stringify({ code: code2 }),
       });
@@ -250,7 +250,7 @@ async function main() {
       else fail('禁用码 join', `status=${status}`);
     }
   } finally {
-    await cleanup(teamId, applicationId, leader2.id, user2.id);
+    await cleanup(teamId, applicationId, leader.id, user.id);
   }
 
   console.log(`\n=== 结果: ${passed} 通过, ${failed} 失败 ===`);

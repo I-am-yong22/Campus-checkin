@@ -109,18 +109,18 @@ async function main() {
     } else fail('GET /auth/me avatarUrl', `status=${status}`);
   }
 
-  // 4. 普通用户 peers
+  // 4. 普通用户 peers（种子默认无团队）
   {
     const { status, data } = await api(userToken, '/teams/peers');
-    if (status === 200 && data.team && Array.isArray(data.members) && data.members.length > 0) {
+    if (status === 200 && Array.isArray(data.members)) {
       ok(`GET /teams/peers 学员 (${data.members.length} 人)`);
     } else fail('GET /teams/peers 学员', `status=${status}`);
   }
 
-  // 5. 负责人 peers
+  // 5. 负责人 peers（种子默认无团队）
   {
     const { status, data } = await api(leaderToken, '/teams/peers');
-    if (status === 200 && data.team) {
+    if (status === 200 && Array.isArray(data.members)) {
       ok('GET /teams/peers 负责人');
     } else fail('GET /teams/peers 负责人', `status=${status}`);
   }

@@ -36,15 +36,14 @@ async function main() {
     where: {
       status: 'ACTIVE',
       role: { in: ['USER', 'LEADER'] },
-      teamId: { not: null },
     },
     select: { id: true, name: true, username: true, teamId: true },
-    orderBy: [{ team: { name: 'asc' } }, { name: 'asc' }],
+    orderBy: [{ username: 'asc' }],
   });
 
-  if (members.length < CHECKED_DEMO_COUNT + 6) {
+  if (members.length < CHECKED_DEMO_COUNT + 1) {
     console.warn(
-      `警告：在队成员仅 ${members.length} 人，未签到可能不足 6 人。建议在 seed 中增加团队成员。`,
+      `警告：可用账号仅 ${members.length} 人，看板演示数据可能较少。可通过管理端创建更多用户。`,
     );
   }
 
