@@ -10,6 +10,11 @@ import { AuditService } from '../audit/audit.service';
 import { AttendanceRuleService } from '../attendance/attendance-rule.service';
 import { todayStr } from '../common/datetime';
 import { maskCheckInWorkHours } from '../common/work-hours';
+import {
+  aggregateMonthlyWorkHours,
+  loadMonthlyWorkHoursContext,
+  resolveDayEffectiveWorkMinutes,
+} from '../common/work-hours-aggregation';
 import { PrismaService } from '../prisma/prisma.service';
 import { TeamsService } from '../teams/teams.service';
 import { MakeupCheckInDto } from './dto/checkin.dto';
@@ -51,10 +56,28 @@ export class CheckInService {
     if (month) {
       where.date = { startsWith: month };
     }
-    return this.prisma.checkIn.findMany({
+    const rows = await this.prisma.checkIn.findMany({
       where,
       orderBy: { date: 'desc' },
     });
+    if (!month) return rows;
+
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { teamId: true },
+    });
+    const ctx = await loadMonthlyWorkHoursContext(
+      this.prisma,
+      [{ userId, teamId: user?.teamId ?? null }],
+      month,
+    );
+    return rows.map((r) => ({
+      ...r,
+      effectiveWorkMinutes: resolveDayEffectiveWorkMinutes(
+        r,
+        ctx.leaveIntervalsForUserOnDate(userId, r.date),
+      ),
+    }));
   }
 
   async teamCheckIns(
@@ -82,6 +105,10 @@ export class CheckInService {
 
   async workHoursSummary(userId: number, month?: string) {
     const m = month || todayStr().slice(0, 7);
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { teamId: true },
+    });
     const records = await this.prisma.checkIn.findMany({
       where: { userId, date: { startsWith: m } },
       select: {
@@ -94,12 +121,15 @@ export class CheckInService {
       },
       orderBy: { date: 'asc' },
     });
-    const totalMinutes = records.reduce((sum, r) => sum + (r.workMinutes ?? 0), 0);
-    const completedDays = records.filter((r) => r.workMinutes != null).length;
+    const totalsMap = await aggregateMonthlyWorkHours(
+      this.prisma,
+      [{ userId, teamId: user?.teamId ?? null }],
+      m,
+    );
+    const totals = totalsMap.get(userId)!;
     return {
       month: m,
-      totalMinutes,
-      completedDays,
+      ...totals,
       recordCount: records.length,
       records,
     };

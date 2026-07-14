@@ -1,4 +1,15 @@
-import { IsIn, IsOptional, IsString, Matches, MaxLength } from 'class-validator';
+import { Type } from 'class-transformer';
+import {
+  IsIn,
+  IsInt,
+  IsOptional,
+  IsString,
+  Matches,
+  Max,
+  MaxLength,
+  Min,
+  ValidateIf,
+} from 'class-validator';
 
 export class CreateLeaveDto {
   @IsString()
@@ -22,6 +33,32 @@ export class CreateLeaveDto {
   @IsOptional()
   @IsIn(['LEADER', 'ADMIN'])
   reviewTarget?: 'LEADER' | 'ADMIN';
+
+  /** 单日可选：FULL_DAY 整天 / HOURLY 按小时 */
+  @IsOptional()
+  @IsIn(['FULL_DAY', 'HOURLY'])
+  leaveMode?: 'FULL_DAY' | 'HOURLY';
+
+  @ValidateIf((o) => o.leaveMode === 'HOURLY')
+  @IsString()
+  @Matches(/^\d{2}:\d{2}$/, { message: 'startTime 格式应为 HH:mm' })
+  startTime?: string;
+
+  @ValidateIf((o) => o.leaveMode === 'HOURLY')
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(0)
+  @Max(23)
+  durationHours?: number;
+
+  @ValidateIf((o) => o.leaveMode === 'HOURLY')
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(0)
+  @Max(59)
+  durationMinutes?: number;
 }
 
 export class ReviewLeaveDto {

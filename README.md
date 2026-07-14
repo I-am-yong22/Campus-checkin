@@ -54,6 +54,7 @@ cd ../frontend && npm i && npm run dev
 - [运维与测试](#运维与测试)
 - [设计决策](#设计决策)
 - [许可证](#许可证)
+- [更新日志](CHANGELOG.md)
 
 ---
 
@@ -253,13 +254,19 @@ docker compose up -d --build
 - **无需加入团队**：已录脸且账号启用的学员/负责人均可签到；有团队时记录关联 `teamId`，无团队时为 `null`
 - 时间窗：签到 `[checkInStart, checkInEnd]`、签退 `[checkOutStart, checkOutEnd]`
 - 中间时段刷脸 → 提示「不在签退时段」
-- 工时 = 签退时间 − 签到时间；忘记签退由主后端 cron 每日 00:05 自动补记
+- **有效工时** = 签退 − 签到 − 与已通过请假时段的重叠；请假日无签到签退不计工时
+- 签到记录中的 `workMinutes` 仍为原始签退差值；汇总/导出/「我的签到」展示扣除重叠后的 **有效工时**
+- 忘记签退由主后端 cron 每日 00:05 自动补记
 - 补签：负责人/管理员可手动补签（附备注）
 
 ### 请假审批
 
 - 学员可选提交给**负责人**或**管理员**；负责人固定提交给管理员
-- 日期重叠校验；待审可撤销
+- **整天请假**（默认）：支持单日或多日
+- **按小时请假**（仅单日）：最少 1 小时，支持「X 小时 Y 分钟」，不可跨自然日
+- 日期/时段重叠校验；待审可撤销
+- **请假核销**：学员返岗后，由堂主/管理员操作核销（`POST /leave/:id/write-off`）；核销时刻为实际返岗时间，用于计算有效请假时段（按小时请假晚于计划返岗时，超时部分计入扣除）
+- 按小时时段与核销记录存于 `AuditLog`（无需改表），详见 [CHANGELOG.md](CHANGELOG.md)
 
 ### 数据统计
 
@@ -470,8 +477,9 @@ npm run reset:today           # 仅清空今日签到（保留人脸）
 | GET | /teams/peers | 登录 | 我的团队 |
 | POST | /teams/leave | USER | 退出指定团队（`?teamId=`） |
 | POST | /teams/members/:userId/remove | LEADER | 移出团队成员 |
-| POST/GET/DELETE | /leave/* | USER/LEADER | 请假 |
+| POST/GET/DELETE | /leave/* | USER/LEADER | 请假（支持按小时字段） |
 | GET/PATCH | /leave/pending, /leave/:id/review | LEADER/ADMIN | 请假审核 |
+| POST | /leave/:id/write-off | LEADER/ADMIN | 请假核销（返岗） |
 | GET | /stats/overview | ADMIN | 统计概览 |
 | GET | /stats/team, /stats/attention | LEADER/ADMIN | 团队统计 / 待关注名单 |
 | GET | /stats/kiosk | ADMIN | 签到机在线状态 |

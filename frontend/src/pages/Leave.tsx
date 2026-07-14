@@ -6,16 +6,24 @@ import {
   DatePicker,
   Form,
   Input,
+  InputNumber,
   Modal,
   Popconfirm,
+  Radio,
   Select,
+  Space,
   Table,
   Tag,
+  TimePicker,
   message,
 } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
-import dayjs from 'dayjs';
-import { leaveApi } from '../api/leave';
+import dayjs, { Dayjs } from 'dayjs';
+import {
+  formatLeavePeriod,
+  leaveApi,
+  WRITE_OFF_SCENARIO_LABEL,
+} from '../api/leave';
 import { useAuth } from '../store/AuthContext';
 import type { LeaveRequest, LeaveReviewTarget } from '../types';
 
@@ -52,6 +60,10 @@ export default function Leave() {
   const [modalOpen, setModalOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [form] = Form.useForm();
+  const leaveMode = Form.useWatch('leaveMode', form);
+  const range = Form.useWatch('range', form) as [Dayjs, Dayjs] | undefined;
+  const isSingleDay =
+    range?.[0] && range?.[1] && range[0].format('YYYY-MM-DD') === range[1].format('YYYY-MM-DD');
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -69,6 +81,18 @@ export default function Leave() {
   const onSubmit = async () => {
     const values = await form.validateFields();
     const [start, end] = values.range;
+    const single = start.format('YYYY-MM-DD') === end.format('YYYY-MM-DD');
+    const mode = single && values.leaveMode === 'HOURLY' ? 'HOURLY' : 'FULL_DAY';
+
+    if (mode === 'HOURLY') {
+      const hours = values.durationHours ?? 0;
+      const mins = values.durationMinutes ?? 0;
+      if (hours * 60 + mins < 60) {
+        message.error('按小时请假最少 1 小时');
+        return;
+      }
+    }
+
     setSubmitting(true);
     try {
       await leaveApi.create({
@@ -77,6 +101,14 @@ export default function Leave() {
         type: values.type,
         reason: values.reason,
         reviewTarget: isLeader ? 'ADMIN' : values.reviewTarget,
+        leaveMode: mode,
+        ...(mode === 'HOURLY'
+          ? {
+              startTime: (values.startTime as Dayjs).format('HH:mm'),
+              durationHours: values.durationHours ?? 0,
+              durationMinutes: values.durationMinutes ?? 0,
+            }
+          : {}),
       });
       message.success('请假申请已提交');
       setModalOpen(false);
@@ -95,8 +127,8 @@ export default function Leave() {
 
   const columns: ColumnsType<LeaveRequest> = [
     {
-      title: '请假日期',
-      render: (_, r) => `${r.startDate}${r.endDate !== r.startDate ? ` ~ ${r.endDate}` : ''}`,
+      title: '请假时间',
+      render: (_, r) => formatLeavePeriod(r),
     },
     { title: '类型', dataIndex: 'type', width: 80 },
     {
@@ -117,6 +149,22 @@ export default function Leave() {
       render: (v: string) => <Tag color={STATUS_TAG[v]?.color}>{STATUS_TAG[v]?.text || v}</Tag>,
     },
     {
+      title: '核销',
+      width: 140,
+      render: (_, r) =>
+        r.writeOff ? (
+          <span>
+            {dayjs(r.writeOff.writeOffAt).format('MM-DD HH:mm')}
+            <br />
+            <Tag style={{ marginTop: 4 }}>
+              {WRITE_OFF_SCENARIO_LABEL[r.writeOff.scenario] || r.writeOff.scenario}
+            </Tag>
+          </span>
+        ) : (
+          '—'
+        ),
+    },
+    {
       title: '审核意见',
       dataIndex: 'reviewComment',
       ellipsis: true,
@@ -125,7 +173,7 @@ export default function Leave() {
     {
       title: '提交时间',
       dataIndex: 'createdAt',
-      width: 170,
+      width: 150,
       render: (v) => dayjs(v).format('YYYY-MM-DD HH:mm'),
     },
     {
@@ -158,6 +206,7 @@ export default function Leave() {
         dataSource={data}
         pagination={{ pageSize: 10 }}
         locale={{ emptyText: '暂无请假记录' }}
+        scroll={{ x: 1100 }}
       />
 
       <Modal
@@ -170,11 +219,18 @@ export default function Leave() {
         onOk={onSubmit}
         confirmLoading={submitting}
         destroyOnClose
+        width={520}
       >
         <Form
           form={form}
           layout="vertical"
-          initialValues={{ type: '事假', reviewTarget: 'LEADER' }}
+          initialValues={{
+            type: '事假',
+            reviewTarget: 'LEADER',
+            leaveMode: 'FULL_DAY',
+            durationHours: 1,
+            durationMinutes: 0,
+          }}
         >
           {isLeader ? (
             <Alert
@@ -199,6 +255,37 @@ export default function Leave() {
           >
             <RangePicker style={{ width: '100%' }} />
           </Form.Item>
+          {isSingleDay && (
+            <>
+              <Form.Item name="leaveMode" label="请假方式">
+                <Radio.Group>
+                  <Radio value="FULL_DAY">整天</Radio>
+                  <Radio value="HOURLY">按小时</Radio>
+                </Radio.Group>
+              </Form.Item>
+              {leaveMode === 'HOURLY' && (
+                <>
+                  <Form.Item
+                    name="startTime"
+                    label="开始时刻"
+                    rules={[{ required: true, message: '请选择开始时刻' }]}
+                  >
+                    <TimePicker format="HH:mm" style={{ width: '100%' }} />
+                  </Form.Item>
+                  <Form.Item label="请假时长（最少 1 小时）" required>
+                    <Space>
+                      <Form.Item name="durationHours" noStyle>
+                        <InputNumber min={0} max={23} addonAfter="小时" />
+                      </Form.Item>
+                      <Form.Item name="durationMinutes" noStyle>
+                        <InputNumber min={0} max={59} addonAfter="分钟" />
+                      </Form.Item>
+                    </Space>
+                  </Form.Item>
+                </>
+              )}
+            </>
+          )}
           <Form.Item name="type" label="类型" rules={[{ required: true }]}>
             <Select options={TYPE_OPTIONS} />
           </Form.Item>

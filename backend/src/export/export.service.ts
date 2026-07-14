@@ -5,6 +5,11 @@ import {
   resolveAttendanceStatus,
 } from '../common/attendance';
 import { todayStr } from '../common/datetime';
+import {
+  datesInMonth,
+  loadMonthlyWorkHoursContext,
+  resolveDayEffectiveWorkMinutes,
+} from '../common/work-hours-aggregation';
 import { PrismaService } from '../prisma/prisma.service';
 import { TeamsService } from '../teams/teams.service';
 
@@ -47,6 +52,18 @@ export class ExportService {
       ? ['姓名', '用户名', '角色', '人脸', '出勤状态', '签到时间', '签退时间', '工时(分钟)', '比对距离', '备注']
       : ['姓名', '用户名', '角色', '人脸', '出勤状态', '签到时间', '比对距离', '备注'];
     const rows: string[][] = [header];
+    const workHoursCtx =
+      includeWorkHours && overview.team?.id
+        ? await loadMonthlyWorkHoursContext(
+            this.prisma,
+            overview.members.map((member) => ({
+              userId: member.id,
+              teamId: overview.team!.id,
+            })),
+            overview.date.slice(0, 7),
+          )
+        : null;
+
     for (const m of overview.members) {
       const status = (m as any).attendanceStatus as string;
       const ci = m.checkIn;
@@ -59,10 +76,19 @@ export class ExportService {
         ci ? new Date(ci.checkInAt).toISOString() : '',
       ];
       if (includeWorkHours) {
+        let workMinutes = '';
+        if (workHoursCtx && overview.team?.id) {
+          const checkIn = workHoursCtx.checkInByUserDate.get(`${m.id}:${overview.date}`);
+          const intervals = workHoursCtx.leaveIntervalsForUserOnDate(m.id, overview.date);
+          const minutes = resolveDayEffectiveWorkMinutes(checkIn, intervals);
+          if (minutes > 0) workMinutes = String(minutes);
+        } else if (ci?.workMinutes != null) {
+          workMinutes = String(ci.workMinutes);
+        }
         rows.push([
           ...base,
           ci?.checkOutAt ? new Date(ci.checkOutAt).toISOString() : '',
-          ci?.workMinutes != null ? String(ci.workMinutes) : '',
+          workMinutes,
           ci ? String(ci.matchScore) : '',
           ci?.remark || (m as any).leaveReason || (m as any).exemptReason || '',
         ]);
@@ -91,13 +117,16 @@ export class ExportService {
       orderBy: { date: 'asc' },
     });
     const checkInMap = new Map(checkIns.map((c) => [c.date, c]));
+    const ctx = await loadMonthlyWorkHoursContext(
+      this.prisma,
+      [{ userId, teamId: user.teamId }],
+      m,
+    );
+    const monthDates = datesInMonth(m);
 
-    const [y, mo] = m.split('-').map(Number);
-    const daysInMonth = new Date(y, mo, 0).getDate();
     const rows: string[][] = [['日期', '出勤状态', '签到时间', '签退时间', '工时(分钟)', '比对距离', '备注']];
 
-    for (let d = 1; d <= daysInMonth; d++) {
-      const date = `${m}-${String(d).padStart(2, '0')}`;
+    for (const date of monthDates) {
       const checkIn = checkInMap.get(date) ?? null;
       let status = '缺勤';
       if (user.teamId) {
@@ -106,12 +135,15 @@ export class ExportService {
       } else if (checkIn) {
         status = checkIn.checkOutAt ? '已完成' : checkIn.status === 'MAKEUP' ? '补签' : '在岗';
       }
+      const stored = ctx.checkInByUserDate.get(`${userId}:${date}`);
+      const intervals = ctx.leaveIntervalsForUserOnDate(userId, date);
+      const minutes = resolveDayEffectiveWorkMinutes(stored ?? checkIn, intervals);
       rows.push([
         date,
         status,
         checkIn ? new Date(checkIn.checkInAt).toISOString() : '',
         checkIn?.checkOutAt ? new Date(checkIn.checkOutAt).toISOString() : '',
-        checkIn?.workMinutes != null ? String(checkIn.workMinutes) : '',
+        minutes > 0 ? String(minutes) : '',
         checkIn ? String(checkIn.matchScore) : '',
         checkIn?.remark || '',
       ]);
@@ -150,11 +182,7 @@ export class ExportService {
     return { filename: `overview-trend-${safeDays}d.csv`, content: toCsv(rows) };
   }
 
-  async workHours(
-    teamId?: number,
-    month?: string,
-  ) {
-
+  async workHours(teamId?: number, month?: string) {
     const m = month || todayStr().slice(0, 7);
     if (!teamId) throw new BadRequestException('请选择团队');
     const resolvedTeamId = teamId;
@@ -180,24 +208,33 @@ export class ExportService {
       byUserDate.set(`${c.userId}:${c.date}`, c);
     }
 
-    const [y, mo] = m.split('-').map(Number);
-    const daysInMonth = new Date(y, mo, 0).getDate();
-    const rows: string[][] = [['姓名', '用户名', '日期', '签到时间', '签退时间', '工时(分钟)', '签退类型', '备注']];
+    const ctx = await loadMonthlyWorkHoursContext(
+      this.prisma,
+      members.map((member) => ({ userId: member.id, teamId: resolvedTeamId })),
+      m,
+    );
+
+    const monthDates = datesInMonth(m);
+    const rows: string[][] = [
+      ['姓名', '用户名', '日期', '签到时间', '签退时间', '工时(分钟)', '签退类型', '备注'],
+    ];
 
     for (const member of members) {
-      for (let d = 1; d <= daysInMonth; d++) {
-        const date = `${m}-${String(d).padStart(2, '0')}`;
+      for (const date of monthDates) {
         const c = byUserDate.get(`${member.id}:${date}`);
-        if (!c) continue;
+        const stored = ctx.checkInByUserDate.get(`${member.id}:${date}`);
+        const intervals = ctx.leaveIntervalsForUserOnDate(member.id, date);
+        const minutes = resolveDayEffectiveWorkMinutes(stored ?? c, intervals);
+        if (!c && minutes <= 0) continue;
         rows.push([
           member.name,
           member.username,
           date,
-          new Date(c.checkInAt).toISOString(),
-          c.checkOutAt ? new Date(c.checkOutAt).toISOString() : '',
-          c.workMinutes != null ? String(c.workMinutes) : '',
-          c.checkOutType || '',
-          c.remark || '',
+          c ? new Date(c.checkInAt).toISOString() : '',
+          c?.checkOutAt ? new Date(c.checkOutAt).toISOString() : '',
+          minutes > 0 ? String(minutes) : '',
+          c?.checkOutType || '',
+          c?.remark || '',
         ]);
       }
     }

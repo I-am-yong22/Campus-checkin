@@ -40,11 +40,33 @@ export interface CheckIn {
   checkOutScore?: number | null;
   checkOutType?: CheckOutType | null;
   workMinutes?: number | null;
+  /** 扣除与有效请假重叠后的当日工时（仅 /checkin/mine?month= 返回） */
+  effectiveWorkMinutes?: number;
   user?: User;
 }
 
 export type LeaveStatus = 'PENDING' | 'APPROVED' | 'REJECTED';
 export type LeaveReviewTarget = 'LEADER' | 'ADMIN';
+
+export type LeaveMode = 'FULL_DAY' | 'HOURLY';
+export type LeaveWriteOffScenario = 'SAME_DAY' | 'NEXT_DAY' | 'OTHER';
+
+export interface LeaveTimeMeta {
+  leaveId: number;
+  mode: LeaveMode;
+  startTime?: string;
+  durationMinutes?: number;
+  leaveStartAt?: string;
+  leaveEndAt?: string;
+}
+
+export interface LeaveWriteOff {
+  leaveId: number;
+  writeOffAt: string;
+  writeOffDate: string;
+  scenario: LeaveWriteOffScenario;
+  operatorId?: number;
+}
 
 export interface LeaveRequest {
   id: number;
@@ -61,4 +83,6 @@ export interface LeaveRequest {
   createdAt: string;
   user?: User;
   reviewer?: User;
+  timeMeta?: LeaveTimeMeta;
+  writeOff?: LeaveWriteOff | null;
 }

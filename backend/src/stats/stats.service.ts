@@ -5,6 +5,7 @@ import {
   resolveAttendanceStatus,
 } from '../common/attendance';
 import { todayStr } from '../common/datetime';
+import { aggregateMonthlyWorkHours } from '../common/work-hours-aggregation';
 import { PrismaService } from '../prisma/prisma.service';
 import { TeamsService } from '../teams/teams.service';
 
@@ -332,32 +333,29 @@ export class StatsService {
       orderBy: { name: 'asc' },
     });
 
-    const checkIns = await this.prisma.checkIn.findMany({
-      where: {
-        date: { startsWith: m },
-        workMinutes: { not: null },
-        ...(teamId ? { teamId } : {}),
-      },
-      select: { userId: true, workMinutes: true },
-    });
-
-    const totalByUser = new Map<number, number>();
-    const daysByUser = new Map<number, number>();
-    for (const c of checkIns) {
-      totalByUser.set(c.userId, (totalByUser.get(c.userId) ?? 0) + (c.workMinutes ?? 0));
-      daysByUser.set(c.userId, (daysByUser.get(c.userId) ?? 0) + 1);
-    }
+    const totalsMap = await aggregateMonthlyWorkHours(
+      this.prisma,
+      members.map((u) => ({ userId: u.id, teamId: u.teamId })),
+      m,
+    );
 
     const leaderboard = members
-      .map((u) => ({
-        userId: u.id,
-        name: u.name,
-        username: u.username,
-        teamId: u.teamId,
-        teamName: u.team?.name ?? null,
-        totalMinutes: totalByUser.get(u.id) ?? 0,
-        completedDays: daysByUser.get(u.id) ?? 0,
-      }))
+      .map((u) => {
+        const totals = totalsMap.get(u.id)!;
+        return {
+          userId: u.id,
+          name: u.name,
+          username: u.username,
+          teamId: u.teamId,
+          teamName: u.team?.name ?? null,
+          checkInMinutes: totals.checkInMinutes,
+          leaveMinutes: totals.leaveMinutes,
+          totalMinutes: totals.totalMinutes,
+          completedDays: totals.completedDays,
+          checkInCompletedDays: totals.checkInCompletedDays,
+          leaveDays: totals.leaveDays,
+        };
+      })
       .sort((a, b) => b.totalMinutes - a.totalMinutes || a.name.localeCompare(b.name, 'zh-CN'))
       .map((row, index) => ({ rank: index + 1, ...row }));
 

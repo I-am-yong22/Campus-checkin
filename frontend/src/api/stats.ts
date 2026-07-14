@@ -72,8 +72,12 @@ export interface WorkHoursLeaderboard {
     username: string;
     teamId: number | null;
     teamName: string | null;
+    checkInMinutes: number;
+    leaveMinutes: number;
     totalMinutes: number;
     completedDays: number;
+    checkInCompletedDays: number;
+    leaveDays: number;
   }[];
 }
 

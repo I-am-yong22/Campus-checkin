@@ -5,6 +5,7 @@ import {
   Form,
   Input,
   Modal,
+  Popconfirm,
   Space,
   Table,
   Tabs,
@@ -13,7 +14,11 @@ import {
 } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import dayjs from 'dayjs';
-import { leaveApi } from '../api/leave';
+import {
+  formatLeavePeriod,
+  leaveApi,
+  WRITE_OFF_SCENARIO_LABEL,
+} from '../api/leave';
 import type { LeaveRequest } from '../types';
 
 const { TextArea } = Input;
@@ -58,6 +63,12 @@ export default function LeaveReview() {
     load();
   };
 
+  const onWriteOff = async (record: LeaveRequest) => {
+    await leaveApi.writeOff(record.id);
+    message.success(`已核销 ${record.user?.name} 的请假`);
+    load();
+  };
+
   const onReject = async () => {
     if (!rejectTarget) return;
     const values = await form.validateFields();
@@ -76,6 +87,11 @@ export default function LeaveReview() {
     }
   };
 
+  const periodColumn = {
+    title: '请假时间',
+    render: (_: unknown, r: LeaveRequest) => formatLeavePeriod(r),
+  };
+
   const pendingColumns: ColumnsType<LeaveRequest> = [
     { title: '申请人', dataIndex: ['user', 'name'], width: 100 },
     { title: '团队', render: (_, r) => r.user?.team?.name || '—', width: 120 },
@@ -85,10 +101,7 @@ export default function LeaveReview() {
       width: 100,
       render: (v: string) => REVIEW_TARGET_LABEL[v] || v,
     },
-    {
-      title: '请假日期',
-      render: (_, r) => `${r.startDate}${r.endDate !== r.startDate ? ` ~ ${r.endDate}` : ''}`,
-    },
+    periodColumn,
     { title: '类型', dataIndex: 'type', width: 80 },
     { title: '事由', dataIndex: 'reason', ellipsis: true },
     {
@@ -115,16 +128,38 @@ export default function LeaveReview() {
 
   const reviewedColumns: ColumnsType<LeaveRequest> = [
     { title: '申请人', dataIndex: ['user', 'name'], width: 100 },
-    {
-      title: '请假日期',
-      render: (_, r) => `${r.startDate}${r.endDate !== r.startDate ? ` ~ ${r.endDate}` : ''}`,
-    },
+    periodColumn,
     { title: '类型', dataIndex: 'type', width: 80 },
     {
       title: '结果',
       dataIndex: 'status',
       width: 100,
       render: (v: string) => <Tag color={STATUS_TAG[v]?.color}>{STATUS_TAG[v]?.text}</Tag>,
+    },
+    {
+      title: '核销',
+      width: 150,
+      render: (_, r) =>
+        r.status === 'APPROVED' && !r.writeOff ? (
+          <Popconfirm
+            title="确认学员已返岗？核销后按返岗时间截断请假时段。"
+            onConfirm={() => onWriteOff(r)}
+          >
+            <Button type="link" size="small">
+              请假核销
+            </Button>
+          </Popconfirm>
+        ) : r.writeOff ? (
+          <span>
+            {dayjs(r.writeOff.writeOffAt).format('MM-DD HH:mm')}
+            <br />
+            <Tag style={{ marginTop: 4 }}>
+              {WRITE_OFF_SCENARIO_LABEL[r.writeOff.scenario] || r.writeOff.scenario}
+            </Tag>
+          </span>
+        ) : (
+          '—'
+        ),
     },
     { title: '审核人', render: (_, r) => r.reviewer?.name || '—', width: 100 },
     { title: '意见', dataIndex: 'reviewComment', ellipsis: true, render: (v) => v || '—' },
@@ -151,6 +186,7 @@ export default function LeaveReview() {
                 dataSource={pending}
                 pagination={false}
                 locale={{ emptyText: '暂无待审核申请' }}
+                scroll={{ x: 1000 }}
               />
             ),
           },
@@ -165,6 +201,7 @@ export default function LeaveReview() {
                 dataSource={reviewed}
                 pagination={{ pageSize: 10 }}
                 locale={{ emptyText: '暂无已处理记录' }}
+                scroll={{ x: 1100 }}
               />
             ),
           },

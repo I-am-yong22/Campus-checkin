@@ -69,7 +69,7 @@ export default function AdminWorkHours() {
     { title: '用户名', dataIndex: 'username', width: 110 },
     { title: '团队', dataIndex: 'teamName', render: (v) => v || '—' },
     {
-      title: '本月工时(分钟)',
+      title: '合计工时(分钟)',
       dataIndex: 'totalMinutes',
       sorter: (a, b) => a.totalMinutes - b.totalMinutes,
       defaultSortOrder: 'descend',
@@ -80,7 +80,7 @@ export default function AdminWorkHours() {
       ),
     },
     {
-      title: '完成天数',
+      title: '有效天数',
       dataIndex: 'completedDays',
       width: 100,
       render: (v: number) => `${v} 天`,
@@ -127,7 +127,7 @@ export default function AdminWorkHours() {
           options={teams.map((t) => ({ value: t.id, label: t.name }))}
         />
         <span style={{ color: chartColors.muted, fontSize: 13 }}>
-          仅管理员可查看全员工时；学员与负责人只能在自己的「我的签到」中查看个人工时。
+          工时已扣除与已通过请假时段重叠的部分。
         </span>
       </Space>
 

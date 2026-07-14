@@ -70,4 +70,13 @@ export class LeaveController {
   cancel(@CurrentUser() user: JwtUser, @Param('id', ParseIntPipe) id: number) {
     return this.leaveService.cancel(user.id, id);
   }
+
+  @Post(':id/write-off')
+  @Roles(Role.LEADER, Role.ADMIN)
+  writeOff(@CurrentUser() user: JwtUser, @Param('id', ParseIntPipe) id: number) {
+    return this.leaveService.writeOff(
+      { id: user.id, role: user.role as Role, teamId: user.teamId },
+      id,
+    );
+  }
 }

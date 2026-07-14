@@ -53,9 +53,25 @@ export default function MyCheckIns() {
       render: (v) => (v ? dayjs(v).format('HH:mm:ss') : '—'),
     },
     {
-      title: '工时(分钟)',
-      dataIndex: 'workMinutes',
-      render: (v) => (v != null ? v : '—'),
+      title: '有效工时(分钟)',
+      key: 'effectiveWorkMinutes',
+      render: (_, r) => {
+        if (!r.checkOutAt) return '—';
+        const eff = r.effectiveWorkMinutes;
+        const raw = r.workMinutes;
+        if (eff == null && raw == null) return '—';
+        if (raw != null && eff != null && raw !== eff) {
+          return (
+            <span>
+              {eff}
+              <span style={{ color: chartColors.muted, marginLeft: 6, fontSize: 12 }}>
+                (原{raw})
+              </span>
+            </span>
+          );
+        }
+        return eff ?? raw ?? '—';
+      },
     },
     {
       title: '签到状态',
@@ -94,38 +110,53 @@ export default function MyCheckIns() {
       }
     >
       {summary && (
-        <Row gutter={16} style={{ marginBottom: 16 }}>
-          <Col xs={12} md={8}>
-            <Card size="small">
-              <Statistic
-                title={`${summary.month} 累计工时`}
-                value={summary.totalMinutes}
-                suffix="分钟"
-                valueStyle={{ color: brand.primary, fontSize: 20 }}
-              />
-            </Card>
-          </Col>
-          <Col xs={12} md={8}>
-            <Card size="small">
-              <Statistic
-                title="完成签退天数"
-                value={summary.completedDays}
-                suffix="天"
-                valueStyle={{ fontSize: 20 }}
-              />
-            </Card>
-          </Col>
-          <Col xs={24} md={8}>
-            <Card size="small">
-              <Statistic
-                title="签到记录"
-                value={summary.recordCount}
-                suffix="条"
-                valueStyle={{ fontSize: 20, color: chartColors.muted }}
-              />
-            </Card>
-          </Col>
-        </Row>
+        <>
+          <p style={{ marginBottom: 16, color: chartColors.muted, fontSize: 13 }}>
+            工时已扣除与已通过请假时段重叠的部分；请假日无签到签退不计工时。按小时请假核销后，以核销时刻为实际返岗，超时部分计入请假扣除。
+          </p>
+          <Row gutter={16} style={{ marginBottom: 16 }}>
+            <Col xs={12} md={6}>
+              <Card size="small">
+                <Statistic
+                  title={`${summary.month} 累计工时`}
+                  value={summary.totalMinutes}
+                  suffix="分钟"
+                  valueStyle={{ color: brand.primary, fontSize: 20 }}
+                />
+              </Card>
+            </Col>
+            <Col xs={12} md={6}>
+              <Card size="small">
+                <Statistic
+                  title="签到工时"
+                  value={summary.checkInMinutes}
+                  suffix="分钟"
+                  valueStyle={{ fontSize: 20, color: brand.primary }}
+                />
+              </Card>
+            </Col>
+            <Col xs={12} md={6}>
+              <Card size="small">
+                <Statistic
+                  title="有效天数"
+                  value={summary.completedDays}
+                  suffix="天"
+                  valueStyle={{ fontSize: 20 }}
+                />
+              </Card>
+            </Col>
+            <Col xs={12} md={6}>
+              <Card size="small">
+                <Statistic
+                  title="签到记录"
+                  value={summary.recordCount}
+                  suffix="条"
+                  valueStyle={{ fontSize: 20, color: chartColors.muted }}
+                />
+              </Card>
+            </Col>
+          </Row>
+        </>
       )}
       <Table
         rowKey="id"

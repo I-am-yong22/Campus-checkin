@@ -38,7 +38,11 @@ export const checkInApi = {
       .get<{
         month: string;
         totalMinutes: number;
+        checkInMinutes: number;
+        leaveMinutes: number;
         completedDays: number;
+        checkInCompletedDays: number;
+        leaveDays: number;
         recordCount: number;
       }>('/checkin/work-hours/summary', { params: { month } })
       .then((r) => r.data),

@@ -1,5 +1,10 @@
 import { CheckIn, CheckInStatus, LeaveStatus } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { loadLeaveTimeMetaByLeaveIds } from './leave-time';
+import {
+  isFullDayLeaveOnDate,
+  loadWriteOffsByLeaveIds,
+} from './leave-writeoff';
 
 export type AttendanceStatus =
   | 'ON_DUTY'
@@ -19,12 +24,14 @@ export interface AttendanceContext {
 
 export function resolveAttendanceStatus(ctx: AttendanceContext): AttendanceStatus {
   if (ctx.exempt) return 'EXEMPT';
+  if (ctx.checkIn) {
+    if (ctx.checkIn.status === CheckInStatus.MAKEUP) return 'MAKEUP';
+    if (ctx.checkIn.checkOutAt) return 'COMPLETED';
+    if (ctx.checkIn.status === CheckInStatus.LATE) return 'ON_DUTY';
+    return 'ON_DUTY';
+  }
   if (ctx.onLeave) return 'ON_LEAVE';
-  if (!ctx.checkIn) return 'ABSENT';
-  if (ctx.checkIn.status === CheckInStatus.MAKEUP) return 'MAKEUP';
-  if (ctx.checkIn.checkOutAt) return 'COMPLETED';
-  if (ctx.checkIn.status === CheckInStatus.LATE) return 'ON_DUTY';
-  return 'ON_DUTY';
+  return 'ABSENT';
 }
 
 export function isDateInLeaveRange(date: string, startDate: string, endDate: string): boolean {
@@ -47,7 +54,7 @@ export async function loadTeamAttendanceContext(
         startDate: { lte: date },
         endDate: { gte: date },
       },
-      select: { userId: true, type: true, reason: true },
+      select: { id: true, userId: true, startDate: true, endDate: true, type: true, reason: true },
     }),
     prisma.calendarExemption.findMany({
       where: {
@@ -55,6 +62,12 @@ export async function loadTeamAttendanceContext(
         OR: [{ teamId: null }, { teamId }],
       },
     }),
+  ]);
+
+  const leaveIds = leaves.map((l) => l.id);
+  const [timeMetaMap, writeOffMap] = await Promise.all([
+    loadLeaveTimeMetaByLeaveIds(prisma, leaveIds),
+    loadWriteOffsByLeaveIds(prisma, leaveIds),
   ]);
 
   const checkInMap = new Map(checkIns.map((c) => [c.userId, c]));
@@ -67,9 +80,18 @@ export async function loadTeamAttendanceContext(
   const result = new Map<number, AttendanceContext>();
   for (const uid of userIds) {
     const leave = leaveMap.get(uid);
+    let onLeave = false;
+    if (leave) {
+      onLeave = isFullDayLeaveOnDate(
+        leave,
+        timeMetaMap.get(leave.id),
+        writeOffMap.get(leave.id),
+        date,
+      );
+    }
     result.set(uid, {
       checkIn: checkInMap.get(uid) ?? null,
-      onLeave: !!leave,
+      onLeave,
       leaveReason: leave ? `${leave.type}: ${leave.reason}` : null,
       exempt,
       exemptReason,
